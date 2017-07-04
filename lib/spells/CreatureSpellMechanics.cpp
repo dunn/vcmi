@@ -81,7 +81,7 @@ void DeathStareMechanics::applyBattleEffects(const SpellCastEnvironment * env, c
 		BattleStackAttacked bsa;
 		bsa.flags |= BattleStackAttacked::SPELL_EFFECT;
 		bsa.spellID = owner->id;
-		bsa.damageAmount = parameters.effectPower * (attackedCre)->valOfBonuses(Bonus::STACK_HEALTH);//todo: move here all DeathStare calculation
+		bsa.damageAmount = parameters.effectPower * (attackedCre)->MaxHealth();//todo: move here all DeathStare calculation
 		bsa.stackAttacked = (attackedCre)->ID;
 		bsa.attackerID = -1;
 		(attackedCre)->prepareAttacked(bsa, env->getRandomGenerator());

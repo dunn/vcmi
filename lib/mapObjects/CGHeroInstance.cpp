@@ -1080,7 +1080,7 @@ CStackBasicDescriptor CGHeroInstance::calculateNecromancy (const BattleResult &b
 		const CreatureID creatureTypes[] = {CreatureID::SKELETON, CreatureID::WALKING_DEAD, CreatureID::WIGHTS, CreatureID::LICHES};
 		const bool improvedNecromancy = hasBonusOfType(Bonus::IMPROVED_NECROMANCY);
 		const CCreature *raisedUnitType = VLC->creh->creatures[creatureTypes[improvedNecromancy ? necromancyLevel : 0]];
-		const ui32 raisedUnitHP = raisedUnitType->valOfBonuses(Bonus::STACK_HEALTH);
+		const ui32 raisedUnitHP = raisedUnitType->MaxHealth();
 
 		//calculate creatures raised from each defeated stack
 		for (auto & casualtie : casualties)
@@ -1088,7 +1088,7 @@ CStackBasicDescriptor CGHeroInstance::calculateNecromancy (const BattleResult &b
 			// Get lost enemy hit points convertible to units.
 			CCreature * c = VLC->creh->creatures[casualtie.first];
 
-			const ui32 raisedHP = c->valOfBonuses(Bonus::STACK_HEALTH) * casualtie.second * necromancySkill;
+			const ui32 raisedHP = c->MaxHealth() * casualtie.second * necromancySkill;
 			raisedUnits += std::min<ui32>(raisedHP / raisedUnitHP, casualtie.second * necromancySkill); //limit to % of HP and % of original stack count
 		}
 
