@@ -1395,6 +1395,9 @@ DLL_LINKAGE void BattleStackAttacked::applyGs(CGameState *gs)
 	CStack *at = gs->curB->getStack(stackAttacked);
 	assert(at);
 	at->popBonuses(Bonus::UntilBeingAttacked);
+
+	TQuantity kills = std::max<TQuantity>(0, at->count - newAmount);
+	at->resurrected = std::max<TQuantity>(0, at->resurrected - kills);
 	at->count = newAmount;
 	at->firstHPleft = newHP;
 
