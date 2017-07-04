@@ -1280,36 +1280,36 @@ DLL_LINKAGE void BattleSetActiveStack::applyGs(CGameState *gs)
 
 DLL_LINKAGE void BattleTriggerEffect::applyGs(CGameState *gs)
 {
-	CStack *st = gs->curB->getStack(stackID);
-	switch (effect)
+	CStack * st = gs->curB->getStack(stackID);
+	assert(st);
+	switch(effect)
 	{
-		case Bonus::HP_REGENERATION:
-			st->firstHPleft += val;
-			vstd::amin (st->firstHPleft, (ui32)st->MaxHealth());
-			break;
-		case Bonus::MANA_DRAIN:
-		{
-			CGHeroInstance * h = gs->getHero(ObjectInstanceID(additionalInfo));
-			st->state.insert (EBattleStackState::DRAINED_MANA);
-			h->mana -= val;
-			vstd::amax(h->mana, 0);
-			break;
-		}
-		case Bonus::POISON:
-		{
-			auto b = st->getBonusLocalFirst(Selector::source(Bonus::SPELL_EFFECT, SpellID::POISON)
-					.And(Selector::type(Bonus::STACK_HEALTH)));
-			if (b)
-				b->val = val;
-			break;
-		}
-		case Bonus::ENCHANTER:
-			break;
-		case Bonus::FEAR:
-			st->state.insert(EBattleStackState::FEAR);
-			break;
-		default:
-			logNetwork->warnStream() << "Unrecognized trigger effect type "<< effect;
+	case Bonus::HP_REGENERATION:
+		st->healed(val, false, false);
+		break;
+	case Bonus::MANA_DRAIN:
+	{
+		CGHeroInstance * h = gs->getHero(ObjectInstanceID(additionalInfo));
+		st->state.insert (EBattleStackState::DRAINED_MANA);
+		h->mana -= val;
+		vstd::amax(h->mana, 0);
+		break;
+	}
+	case Bonus::POISON:
+	{
+		auto b = st->getBonusLocalFirst(Selector::source(Bonus::SPELL_EFFECT, SpellID::POISON)
+				.And(Selector::type(Bonus::STACK_HEALTH)));
+		if (b)
+			b->val = val;
+		break;
+	}
+	case Bonus::ENCHANTER:
+		break;
+	case Bonus::FEAR:
+		st->state.insert(EBattleStackState::FEAR);
+		break;
+	default:
+		logNetwork->warnStream() << "Unrecognized trigger effect type "<< effect;
 	}
 }
 
@@ -1396,10 +1396,10 @@ DLL_LINKAGE void BattleStackAttacked::applyGs(CGameState *gs)
 	assert(at);
 	at->popBonuses(Bonus::UntilBeingAttacked);
 
-	TQuantity kills = std::max<TQuantity>(0, at->count - newAmount);
-	at->resurrected = std::max<TQuantity>(0, at->resurrected - kills);
-	at->count = newAmount;
-	at->firstHPleft = newHP;
+	if(willRebirth())
+		at->damaged(damageAmount, 0, 0);
+	else
+		at->damaged(damageAmount, newAmount, newHP);
 
 	if(killed())
 	{
@@ -1417,13 +1417,13 @@ DLL_LINKAGE void BattleStackAttacked::applyGs(CGameState *gs)
 	}
 	//life drain handling
 	for(auto & elem : healedStacks)
-	{
 		elem.applyGs(gs);
-	}
+
 	if(willRebirth())
 	{
 		at->casts.use();
-		at->state.insert(EBattleStackState::ALIVE); //hmm?
+		at->state.insert(EBattleStackState::ALIVE);
+		at->healed(newAmount * at->MaxHealth(), false, false);
 	}
 	if(cloneKilled())
 	{
@@ -1439,9 +1439,7 @@ DLL_LINKAGE void BattleStackAttacked::applyGs(CGameState *gs)
 
 	//killed summoned creature should be removed like clone
 	if(killed() && vstd::contains(at->state, EBattleStackState::SUMMONED))
-	{
 		at->makeGhost();
-	}
 }
 
 DLL_LINKAGE void BattleAttack::applyGs(CGameState * gs)
@@ -1610,6 +1608,7 @@ DLL_LINKAGE void StacksHealedOrResurrected::applyGs(CGameState *gs)
 	for(auto & elem : healedStacks)
 	{
 		CStack * changedStack = gs->curB->getStack(elem.stackID, false);
+		assert(changedStack);
 
 		//checking if we resurrect a stack that is under a living stack
 		auto accessibility = gs->curB->getAccesibility();
@@ -1629,24 +1628,9 @@ DLL_LINKAGE void StacksHealedOrResurrected::applyGs(CGameState *gs)
 
 			changedStack->state.insert(EBattleStackState::ALIVE);
 		}
-		int res;
-		if(canOverheal) //for example WoG ghost soul steal ability allows getting more units than before battle
-			res = elem.healedHP / changedStack->MaxHealth();
-		else
-			res = std::min(elem.healedHP / changedStack->MaxHealth() , changedStack->baseAmount - changedStack->count);
-		changedStack->count += res;
-		if(elem.lowLevelResurrection)
-			changedStack->resurrected += res;
-		changedStack->firstHPleft += elem.healedHP - res * changedStack->MaxHealth();
-		if(changedStack->firstHPleft > changedStack->MaxHealth())
-		{
-			changedStack->firstHPleft -= changedStack->MaxHealth();
-			if(changedStack->baseAmount > changedStack->count)
-			{
-				changedStack->count += 1;
-			}
-		}
-		vstd::amin(changedStack->firstHPleft, changedStack->MaxHealth());
+
+		changedStack->healed(elem.healedHP, elem.lowLevelResurrection, canOverheal);
+
 		if(resurrected)
 		{
 			//removing all spells effects
@@ -1664,7 +1648,7 @@ DLL_LINKAGE void StacksHealedOrResurrected::applyGs(CGameState *gs)
 		else if(cure)
 		{
 			//removing all effects from negative spells
-			auto selector = [](const Bonus* b)
+			auto selector = [](const Bonus * b)
 			{
 				//Special case: DISRUPTING_RAY is "immune" to dispell
 				//Other even PERMANENT effects can be removed

@@ -14,11 +14,12 @@
 #include "CRandomGenerator.h"
 #include "NetPacks.h"
 
+
 ///CAmmo
 CAmmo::CAmmo(const CStack * Owner, CSelector totalSelector):
-	owner(Owner), totalProxy(Owner, totalSelector)
+	CStackResource(Owner), totalProxy(Owner, totalSelector)
 {
-	reset();
+
 }
 
 int32_t CAmmo::available() const
@@ -105,10 +106,61 @@ void CRetaliations::reset()
 	totalCache = 0;
 }
 
+///CHealth
+CHealth::CHealth(const CStack * Owner):
+	CStackResource(Owner)
+{
+
+}
+
+void CHealth::reset()
+{
+	CStackResource::reset();
+	healed = 0;
+	resurrected = 0;
+}
+
+int64_t CHealth::available() const
+{
+	return total() - lost();
+}
+
+int64_t CHealth::lost() const
+{
+	return used - healed - resurrected;
+}
+
+int32_t CHealth::firstHPleft() const
+{
+	//FIXME: what if MaxHealth changed
+	return available() % owner->MaxHealth();
+}
+
+void CHealth::heal(int64_t amount)
+{
+	healed += amount;
+}
+
+void CHealth::resurrect(int64_t amount)
+{
+	resurrected += amount;
+}
+
+void CHealth::damage(int64_t amount)
+{
+	used += amount;
+}
+
+int64_t CHealth::total() const
+{
+	//FIXME: what if MaxHealth changed
+	return static_cast<int64_t>(owner->MaxHealth()) * owner->baseAmount;
+}
+
 ///CStack
 CStack::CStack(const CStackInstance * Base, PlayerColor O, int I, ui8 Side, SlotID S)
 	: base(Base), ID(I), owner(O), slot(S), side(Side),
-	counterAttacks(this), shots(this), casts(this), cloneID(-1),
+	counterAttacks(this), shots(this), casts(this), health(this), cloneID(-1),
 	firstHPleft(-1), position(), resurrected(0)
 {
 	assert(base);
@@ -117,14 +169,14 @@ CStack::CStack(const CStackInstance * Base, PlayerColor O, int I, ui8 Side, Slot
 	setNodeType(STACK_BATTLE);
 }
 CStack::CStack():
-	counterAttacks(this), shots(this), casts(this)
+	counterAttacks(this), shots(this), casts(this), health(this)
 {
 	init();
 	setNodeType(STACK_BATTLE);
 }
 CStack::CStack(const CStackBasicDescriptor *stack, PlayerColor O, int I, ui8 Side, SlotID S)
 	: base(nullptr), ID(I), owner(O), slot(S), side(Side),
-	counterAttacks(this), shots(this), casts(this), cloneID(-1),
+	counterAttacks(this), shots(this), casts(this), health(this), cloneID(-1),
 	firstHPleft(-1), position(), resurrected(0)
 {
 	type = stack->type;
@@ -499,7 +551,7 @@ void CStack::prepareAttacked(BattleStackAttacked &bsa, CRandomGenerator & rand, 
 			{
 				bsa.flags |= BattleStackAttacked::REBIRTH;
 				bsa.newAmount = resurrectedStackCount; //risky?
-				bsa.newHP = MaxHealth(); //resore full health
+				bsa.newHP = MaxHealth(); //restore full health
 			}
 		}
 	}
@@ -649,4 +701,43 @@ void CStack::getCastDescription(const CSpell * spell, const std::vector<const CS
 	//todo: use text 566 for single creature
 	getCasterName(text);
 	text.addReplacement(MetaString::SPELL_NAME, spell->id.toEnum());
+}
+
+void CStack::damaged(int64_t amount, int32_t newCount, int32_t newFisrtHP)
+{
+	health.damage(amount);
+
+	TQuantity kills = std::max<TQuantity>(0, count - newCount);
+	resurrected = std::max<TQuantity>(0, resurrected - kills);
+	count = newCount;
+	firstHPleft = newFisrtHP;
+}
+
+void CStack::healed(int64_t amount, bool lowLevel, bool canOverheal)
+{
+	if(!canOverheal)
+		vstd::amax(amount, health.lost());
+
+	if(lowLevel)
+		health.resurrect(amount);
+	else
+		health.heal(amount);
+
+	int res;
+	if(canOverheal) //for example WoG ghost soul steal ability allows getting more units than before battle
+		res = amount / MaxHealth();
+	else
+		res = std::min<int>(amount / MaxHealth() , baseAmount - count);
+	count += res;
+	if(lowLevel)
+		resurrected += res;
+	firstHPleft += amount - res * MaxHealth();
+	if(firstHPleft > MaxHealth())
+	{
+		firstHPleft -= MaxHealth();
+		if(count < baseAmount)
+			count += 1;
+	}
+
+	vstd::amin(firstHPleft, MaxHealth());
 }

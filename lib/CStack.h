@@ -16,14 +16,34 @@ struct BattleStackAttacked;
 struct BattleInfo;
 class CStack;
 
-class DLL_LINKAGE CAmmo
+template <typename Quantity>
+class DLL_LINKAGE CStackResource
+{
+public:
+	CStackResource(const CStack * Owner):
+		owner(Owner)
+	{
+		reset();
+	}
+
+	virtual void reset()
+	{
+		used = 0;
+	};
+
+protected:
+	const CStack * owner;
+	Quantity used;
+};
+
+class DLL_LINKAGE CAmmo : public CStackResource<int32_t>
 {
 public:
 	CAmmo(const CStack * Owner, CSelector totalSelector);
 
 	int32_t available() const;
 	bool canUse(int32_t amount = 1) const;
-	virtual void reset();
+	virtual void reset() override;
 	virtual int32_t total() const;
 	virtual void use(int32_t amount = 1);
 
@@ -33,12 +53,8 @@ public:
 			reset();
 		h & used;
 	}
-
 protected:
-	const CStack * owner;
 	CBonusProxy totalProxy;
-private:
-	int32_t used;
 };
 
 class DLL_LINKAGE CShots : public CAmmo
@@ -64,14 +80,42 @@ private:
 	mutable int32_t totalCache;
 };
 
+class DLL_LINKAGE CHealth : public CStackResource<int64_t>
+{
+public:
+	CHealth(const CStack * Owner);
+	virtual void reset() override;
+
+	int64_t available() const;
+	int64_t lost() const;
+	int64_t total() const;
+	void heal(int64_t amount);
+	void resurrect(int64_t amount);
+	void damage(int64_t amount);
+
+	int32_t firstHPleft() const;
+
+	template <typename Handler> void serialize(Handler & h, const int version)
+	{
+		if(!h.saving)
+			reset();
+		h & used & healed & resurrected;
+	}
+private:
+	int64_t healed; //also high level resurrection
+	int64_t resurrected; //only low level resurrection
+
+	mutable int32_t maxHealthCache;
+};
+
 class DLL_LINKAGE CStack : public CBonusSystemNode, public CStackBasicDescriptor, public ISpellCaster
 {
 public:
-	const CStackInstance *base; //garrison slot from which stack originates (nullptr for war machines, summoned cres, etc)
+	const CStackInstance * base; //garrison slot from which stack originates (nullptr for war machines, summoned cres, etc)
 
 	ui32 ID; //unique ID of stack
 	ui32 baseAmount;
-	ui32 firstHPleft; //HP of first creature in stack
+	ui32 firstHPleft; //HP of first creature in stack (DEPRECATED)
 	PlayerColor owner; //owner - player color (255 for neutrals)
 	SlotID slot;  //slot - position in garrison (may be 255 for neutrals/called creatures)
 	ui8 side;
@@ -80,7 +124,8 @@ public:
 	CRetaliations counterAttacks;
 	CShots shots;
 	CCasts casts; //how many casts left
-	TQuantity resurrected; // these units will be taken back after battle is over
+	CHealth health;
+	TQuantity resurrected; // these units will be taken back after battle is over (DEPRECATED)
 	///id of alive clone of this stack clone if any
 	si32 cloneID;
 	std::set<EBattleStackState::EBattleStackState> state;
@@ -160,13 +205,16 @@ public:
 	///stack will be ghost in next battle state update
 	void makeGhost();
 
+	void damaged(int64_t amount, int32_t newCount, int32_t newFisrtHP);
+	void healed(int64_t amount, bool lowLevel, bool canOverheal);
+
 	template <typename Handler> void serialize(Handler &h, const int version)
 	{
 		assert(isIndependentNode());
 		h & static_cast<CBonusSystemNode&>(*this);
 		h & static_cast<CStackBasicDescriptor&>(*this);
 		h & ID & baseAmount & firstHPleft & owner & slot & side & position & state
-			& shots & casts & counterAttacks & count & resurrected;
+			& shots & casts & counterAttacks & health & count & resurrected;
 
 		const CArmedInstance *army = (base ? base->armyObj : nullptr);
 		SlotID extSlot = (base ? base->armyObj->findStack(base) : SlotID());
