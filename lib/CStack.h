@@ -13,6 +13,57 @@
 #include "mapObjects/CGHeroInstance.h" // for commander serialization
 
 struct BattleStackAttacked;
+struct BattleInfo;
+class CStack;
+
+class DLL_LINKAGE CAmmo
+{
+public:
+	CAmmo(const CStack * Owner);
+
+	int32_t available() const;
+	bool canUse(int32_t amount = 1) const;
+	virtual void reset();
+	virtual int32_t total() const = 0;
+	virtual void use(int32_t amount = 1);
+
+	template <typename Handler> void serialize(Handler & h, const int version)
+	{
+		if(!h.saving)
+			reset();
+		h & used;
+	}
+
+protected:
+	const CStack * owner;
+private:
+	int32_t used;
+};
+
+class DLL_LINKAGE CShots : public CAmmo
+{
+public:
+	CShots(const CStack * Owner);
+	int32_t total() const override;
+	void use(int32_t amount = 1) override;
+};
+
+class DLL_LINKAGE CCasts : public CAmmo
+{
+public:
+	CCasts(const CStack * Owner);
+	int32_t total() const override;
+};
+
+class DLL_LINKAGE CRetaliations : public CAmmo
+{
+public:
+	CRetaliations(const CStack * Owner);
+	int32_t total() const override;
+	void reset() override;
+private:
+	mutable int32_t totalCache;
+};
 
 class DLL_LINKAGE CStack : public CBonusSystemNode, public CStackBasicDescriptor, public ISpellCaster
 {
@@ -22,16 +73,14 @@ public:
 	ui32 ID; //unique ID of stack
 	ui32 baseAmount;
 	ui32 firstHPleft; //HP of first creature in stack
-	PlayerColor owner; //owner - player colour (255 for neutrals)
+	PlayerColor owner; //owner - player color (255 for neutrals)
 	SlotID slot;  //slot - position in garrison (may be 255 for neutrals/called creatures)
 	ui8 side;
 	BattleHex position; //position on battlefield; -2 - keep, -3 - lower tower, -4 - upper tower
-	///how many times this stack has been counterattacked this round
-	ui8 counterAttacksPerformed;
-	///cached total count of counterattacks; should be cleared each round;do not serialize
-	mutable ui8 counterAttacksTotalCache;
-	si16 shots; //how many shots left
-	ui8 casts; //how many casts left
+
+	CRetaliations counterAttacks;
+	CShots shots;
+	CCasts casts; //how many casts left
 	TQuantity resurrected; // these units will be taken back after battle is over
 	///id of alive clone of this stack clone if any
 	si32 cloneID;
@@ -46,17 +95,17 @@ public:
 	std::string nodeName() const override;
 
 	void init(); //set initial (invalid) values
+	void localInit(BattleInfo * battleInfo);
 	void postInit(); //used to finish initialization when inheriting creature parameters is working
 	std::string getName() const; //plural or singular
 	bool willMove(int turn = 0) const; //if stack has remaining move this turn
 	bool ableToRetaliate() const; //if stack can retaliate after attacked
-	///how many times this stack can counterattack in one round
-	ui8 counterAttacksTotal() const;
-	///how many times this stack can counterattack in one round more
-	si8 counterAttacksRemaining() const;
+
 	bool moved(int turn = 0) const; //if stack was already moved this turn
 	bool waited(int turn = 0) const;
+	bool canCast() const;
 	bool canMove(int turn = 0) const; //if stack can move
+	bool canShoot() const;
 	bool canBeHealed() const; //for first aid tent - only harmed stacks that are not war machines
 	///returns actual heal value based on internal state
 	ui32 calculateHealedHealthPoints(ui32 toHeal, const bool resurrect) const;
@@ -112,8 +161,8 @@ public:
 		assert(isIndependentNode());
 		h & static_cast<CBonusSystemNode&>(*this);
 		h & static_cast<CStackBasicDescriptor&>(*this);
-		h & ID & baseAmount & firstHPleft & owner & slot & side & position & state & counterAttacksPerformed
-			& shots & casts & count & resurrected;
+		h & ID & baseAmount & firstHPleft & owner & slot & side & position & state
+			& shots & casts & counterAttacks & count & resurrected;
 
 		const CArmedInstance *army = (base ? base->armyObj : nullptr);
 		SlotID extSlot = (base ? base->armyObj->findStack(base) : SlotID());
@@ -154,4 +203,8 @@ public:
 	bool isGhost() const; //determines if stack was removed
 	bool isValidTarget(bool allowDead = false) const; //non-turret non-ghost stacks (can be attacked or be object of magic effect)
 	bool isTurret() const;
+
+	friend class CShots; //for BattleInfo access
+private:
+	const BattleInfo * battle; //do not serialize
 };

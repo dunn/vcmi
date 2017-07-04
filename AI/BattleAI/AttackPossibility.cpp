@@ -29,7 +29,7 @@ AttackPossibility AttackPossibility::evaluate(const BattleAttackInfo &AttackInfo
 	auto attacker = AttackInfo.attacker;
 	auto enemy = AttackInfo.defender;
 
-	const int remainingCounterAttacks = getValOr(state.counterAttacksLeft, enemy, enemy->counterAttacksRemaining());
+	const int remainingCounterAttacks = getValOr(state.counterAttacksLeft, enemy, enemy->counterAttacks.available());
 	const bool counterAttacksBlocked = attacker->hasBonusOfType(Bonus::BLOCKS_RETALIATION) || enemy->hasBonusOfType(Bonus::NO_RETALIATION);
 	const int totalAttacks = 1 + AttackInfo.attackerBonuses->getBonuses(Selector::type(Bonus::ADDITIONAL_ATTACK), (Selector::effectRange (Bonus::NO_LIMIT).Or(Selector::effectRange(Bonus::ONLY_MELEE_FIGHT))))->totalValue();
 

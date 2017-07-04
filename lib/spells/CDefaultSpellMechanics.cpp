@@ -650,9 +650,9 @@ std::vector<const CStack *> DefaultSpellMechanics::getAffectedStacks(const CBatt
 	return attackedCres;
 }
 
-std::vector<const CStack *> DefaultSpellMechanics::calculateAffectedStacks(const CBattleInfoCallback* cb, const SpellTargetingContext& ctx) const
+std::vector<const CStack *> DefaultSpellMechanics::calculateAffectedStacks(const CBattleInfoCallback * cb, const SpellTargetingContext & ctx) const
 {
-	std::set<const CStack* > attackedCres;//std::set to exclude multiple occurrences of two hex creatures
+	std::set<const CStack *> attackedCres;//std::set to exclude multiple occurrences of two hex creatures
 
 	const auto side = cb->playerToSide(ctx.caster->getOwner());
 	if(!side)
@@ -701,7 +701,7 @@ std::vector<const CStack *> DefaultSpellMechanics::calculateAffectedStacks(const
 	else if(ctx.ti.massive)
 	{
 		TStacks stacks = cb->battleGetStacksIf(mainFilter);
-		for (auto stack : stacks)
+		for(auto stack : stacks)
 			attackedCres.insert(stack);
 	}
 	else //custom range from attackedHexes

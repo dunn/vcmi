@@ -1248,8 +1248,7 @@ DLL_LINKAGE void BattleNextRound::applyGs(CGameState *gs)
 		s->state -= EBattleStackState::HAD_MORALE;
 		s->state -= EBattleStackState::FEAR;
 		s->state -= EBattleStackState::DRAINED_MANA;
-		s->counterAttacksPerformed = 0;
-		s->counterAttacksTotalCache = 0;
+		s->counterAttacks.reset();
 		// new turn effects
 		s->updateBonuses(Bonus::NTurns);
 
@@ -1414,16 +1413,16 @@ DLL_LINKAGE void BattleStackAttacked::applyGs(CGameState *gs)
 		}
 	}
 	//life drain handling
-	for (auto & elem : healedStacks)
+	for(auto & elem : healedStacks)
 	{
 		elem.applyGs(gs);
 	}
-	if (willRebirth())
+	if(willRebirth())
 	{
-		at->casts--;
+		at->casts.use();
 		at->state.insert(EBattleStackState::ALIVE); //hmm?
 	}
-	if (cloneKilled())
+	if(cloneKilled())
 	{
 		//"hide" killed creatures instead so we keep info about it
 		at->makeGhost();
@@ -1442,30 +1441,17 @@ DLL_LINKAGE void BattleStackAttacked::applyGs(CGameState *gs)
 	}
 }
 
-DLL_LINKAGE void BattleAttack::applyGs(CGameState *gs)
+DLL_LINKAGE void BattleAttack::applyGs(CGameState * gs)
 {
-	CStack *attacker = gs->curB->getStack(stackAttacking);
+	CStack * attacker = gs->curB->getStack(stackAttacking);
+	assert(attacker);
+
 	if(counter())
-		attacker->counterAttacksPerformed++;
+		attacker->counterAttacks.use();
 
 	if(shot())
-	{
-		//don't remove ammo if we have a working ammo cart
-		bool hasAmmoCart = false;
-		for(const CStack * st : gs->curB->stacks)
-		{
-			if(st->owner == attacker->owner && st->getCreature()->idNumber == CreatureID::AMMO_CART && st->alive())
-			{
-				hasAmmoCart = true;
-				break;
-			}
-		}
+		attacker->shots.use();
 
-		if (!hasAmmoCart)
-		{
-			attacker->shots--;
-		}
-	}
 	for(BattleStackAttacked & stackAttacked : bsa)
 		stackAttacked.applyGs(gs);
 
@@ -1796,7 +1782,7 @@ DLL_LINKAGE void BattleStacksRemoved::applyGs(CGameState *gs)
 DLL_LINKAGE void BattleStackAdded::applyGs(CGameState *gs)
 {
 	newStackID = 0;
-	if (!BattleHex(pos).isValid())
+	if(!BattleHex(pos).isValid())
 	{
 		logNetwork->warnStream() << "No place found for new stack!";
 		return;
@@ -1804,33 +1790,32 @@ DLL_LINKAGE void BattleStackAdded::applyGs(CGameState *gs)
 
 	CStackBasicDescriptor csbd(creID, amount);
 	CStack * addedStack = gs->curB->generateNewStack(csbd, side, SlotID::SUMMONED_SLOT_PLACEHOLDER, pos); //TODO: netpacks?
-	if (summoned)
+	if(summoned)
 		addedStack->state.insert(EBattleStackState::SUMMONED);
 
-	gs->curB->localInitStack(addedStack);
-	gs->curB->stacks.push_back(addedStack); //the stack is not "SUMMONED", it is permanent
+	addedStack->localInit(gs->curB.get());
+	gs->curB->stacks.push_back(addedStack);
 
 	newStackID = addedStack->ID;
 }
 
-DLL_LINKAGE void BattleSetStackProperty::applyGs(CGameState *gs)
+DLL_LINKAGE void BattleSetStackProperty::applyGs(CGameState * gs)
 {
 	CStack * stack = gs->curB->getStack(stackID);
-	switch (which)
+	switch(which)
 	{
 		case CASTS:
 		{
-			if (absolute)
-				stack->casts = val;
+			if(absolute)
+				logNetwork->error("Can not change casts in absolute mode");
 			else
-				stack->casts += val;
-			vstd::amax(stack->casts, 0);
+				stack->casts.use(val);
 			break;
 		}
 		case ENCHANTER_COUNTER:
 		{
 			auto & counter = gs->curB->sides[gs->curB->whatSide(stack->owner)].enchanterCounter;
-			if (absolute)
+			if(absolute)
 				counter = val;
 			else
 				counter += val;

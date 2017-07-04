@@ -14,26 +14,127 @@
 #include "CRandomGenerator.h"
 #include "NetPacks.h"
 
+///CAmmo
+CAmmo::CAmmo(const CStack * Owner):
+	owner(Owner)
+{
+	reset();
+}
 
-CStack::CStack(const CStackInstance *Base, PlayerColor O, int I, ui8 Side, SlotID S)
+int32_t CAmmo::available() const
+{
+	return total() - used;
+}
+
+bool CAmmo::canUse(int32_t amount) const
+{
+	return available() - amount >= 0;
+}
+
+void CAmmo::reset()
+{
+	used = 0;
+}
+
+void CAmmo::use(int32_t amount)
+{
+	if(available() - amount < 0)
+	{
+		logGlobal->error("Stack ammo overuse");
+		used += available();
+	}
+	else
+		used += amount;
+}
+
+///CShots
+CShots::CShots(const CStack * Owner):
+	CAmmo(Owner)
+{
+
+}
+
+int32_t CShots::total() const
+{
+	static CSelector selector = Selector::type(Bonus::SHOTS);
+	return owner->valOfBonuses(selector);
+}
+
+void CShots::use(int32_t amount)
+{
+	//don't remove ammo if we control a working ammo cart
+	bool hasAmmoCart = false;
+
+	for(const CStack * st : owner->battle->stacks)
+	{
+		if(owner->battle->battleMatchOwner(st, owner, true) && st->getCreature()->idNumber == CreatureID::AMMO_CART && st->alive())
+		{
+			hasAmmoCart = true;
+			break;
+		}
+	}
+
+	if(!hasAmmoCart)
+		CAmmo::use(amount);
+}
+
+///CCasts
+CCasts::CCasts(const CStack * Owner):
+	CAmmo(Owner)
+{
+
+}
+
+int32_t CCasts::total() const
+{
+	static CSelector selector = Selector::type(Bonus::CASTS);
+	return owner->valOfBonuses(selector);
+}
+
+///CRetaliations
+CRetaliations::CRetaliations(const CStack * Owner):
+	CAmmo(Owner), totalCache(0)
+{
+
+}
+
+int32_t CRetaliations::total() const
+{
+	static CSelector selector = Selector::type(Bonus::ADDITIONAL_RETALIATION);
+
+	//after dispell bonus should remain during current round
+	int32_t val = 1 + owner->valOfBonuses(selector);
+	vstd::amax(totalCache, val);
+	return totalCache;
+}
+
+void CRetaliations::reset()
+{
+	CAmmo::reset();
+	totalCache = 0;
+}
+
+///CStack
+CStack::CStack(const CStackInstance * Base, PlayerColor O, int I, ui8 Side, SlotID S)
 	: base(Base), ID(I), owner(O), slot(S), side(Side),
-	counterAttacksPerformed(0),counterAttacksTotalCache(0), cloneID(-1),
-	firstHPleft(-1), position(), shots(0), casts(0), resurrected(0)
+	counterAttacks(this), shots(this), casts(this), cloneID(-1),
+	firstHPleft(-1), position(), resurrected(0)
 {
 	assert(base);
 	type = base->type;
 	count = baseAmount = base->count;
 	setNodeType(STACK_BATTLE);
 }
-CStack::CStack()
+CStack::CStack():
+	counterAttacks(this), shots(this), casts(this)
 {
 	init();
 	setNodeType(STACK_BATTLE);
 }
 CStack::CStack(const CStackBasicDescriptor *stack, PlayerColor O, int I, ui8 Side, SlotID S)
 	: base(nullptr), ID(I), owner(O), slot(S), side(Side),
-	counterAttacksPerformed(0), counterAttacksTotalCache(0), cloneID(-1),
-	firstHPleft(-1), position(), shots(0), casts(0), resurrected(0)
+	counterAttacks(this), shots(this), casts(this), cloneID(-1),
+	firstHPleft(-1), position(), resurrected(0)
 {
 	type = stack->type;
 	count = baseAmount = stack->count;
@@ -51,13 +152,28 @@ void CStack::init()
 	slot = SlotID(255);
 	side = 1;
 	position = BattleHex();
-	counterAttacksPerformed = 0;
-	counterAttacksTotalCache = 0;
 	cloneID = -1;
 
-	shots = 0;
-	casts = 0;
 	resurrected = 0;
+}
+
+void CStack::localInit(BattleInfo * battleInfo)
+{
+	battle = battleInfo;
+
+	exportBonuses();
+	if(base) //stack originating from "real" stack in garrison -> attach to it
+	{
+		attachTo(const_cast<CStackInstance *>(base));
+	}
+	else //attach directly to obj to which stack belongs and creature type
+	{
+		CArmedInstance * army = battle->battleGetArmyObject(side);
+		attachTo(army);
+		assert(type);
+		attachTo(const_cast<CCreature *>(type));
+	}
+	postInit();
 }
 
 void CStack::postInit()
@@ -66,10 +182,9 @@ void CStack::postInit()
 	assert(getParentNodes().size());
 
 	firstHPleft = MaxHealth();
-	shots = getCreature()->valOfBonuses(Bonus::SHOTS);
-	counterAttacksPerformed = 0;
-	counterAttacksTotalCache = 0;
-	casts = valOfBonuses(Bonus::CASTS);
+	shots.reset();
+	counterAttacks.reset();
+	casts.reset();
 	resurrected = 0;
 	cloneID = -1;
 }
@@ -115,6 +230,16 @@ bool CStack::canMove( int turn /*= 0*/ ) const
 {
 	return alive()
 		&& !hasBonus(Selector::type(Bonus::NOT_ACTIVE).And(Selector::turns(turn))); //eg. Ammo Cart or blinded creature
+}
+
+bool CStack::canCast() const
+{
+	return casts.canUse(1);//do not check specific cast abilities here
+}
+
+bool CStack::canShoot() const
+{
+	return shots.canUse(1) && hasBonusOfType(Bonus::SHOOTER);
 }
 
 bool CStack::moved( int turn /*= 0*/ ) const
@@ -352,13 +477,13 @@ void CStack::prepareAttacked(BattleStackAttacked &bsa, CRandomGenerator & rand, 
 		bsa.killedAmount = countToUse; //we cannot kill more creatures than we have
 
 		int resurrectFactor = valOfBonuses(Bonus::REBIRTH);
-		if(resurrectFactor > 0 && casts) //there must be casts left
+		if(resurrectFactor > 0 && canCast()) //there must be casts left
 		{
 			int resurrectedStackCount = base->count * resurrectFactor / 100;
 
 			// last stack has proportional chance to rebirth
 			auto diff = base->count * resurrectFactor / 100.0 - resurrectedStackCount;
-			if (diff > rand.nextDouble(0, 0.99))
+			if(diff > rand.nextDouble(0, 0.99))
 			{
 				resurrectedStackCount += 1;
 			}
@@ -405,26 +530,13 @@ bool CStack::isMeleeAttackPossible(const CStack * attacker, const CStack * defen
 
 }
 
-bool CStack::ableToRetaliate() const //FIXME: crash after clone is killed
+bool CStack::ableToRetaliate() const
 {
 	return alive()
-		&& (counterAttacksPerformed < counterAttacksTotal() || hasBonusOfType(Bonus::UNLIMITED_RETALIATIONS))
+		&& (counterAttacks.canUse() || hasBonusOfType(Bonus::UNLIMITED_RETALIATIONS))
 		&& !hasBonusOfType(Bonus::SIEGE_WEAPON)
 		&& !hasBonusOfType(Bonus::HYPNOTIZED)
 		&& !hasBonusOfType(Bonus::NO_RETALIATION);
-}
-
-ui8 CStack::counterAttacksTotal() const
-{
-	//after dispell bonus should remain during current round
-	ui8 val = 1 + valOfBonuses(Bonus::ADDITIONAL_RETALIATION);
-	vstd::amax(counterAttacksTotalCache, val);
-	return counterAttacksTotalCache;
-}
-
-si8 CStack::counterAttacksRemaining() const
-{
-	return counterAttacksTotal() - counterAttacksPerformed;
 }
 
 std::string CStack::getName() const

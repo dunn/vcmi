@@ -236,10 +236,10 @@ void CStackWindow::CWindowSection::createStackInfo(bool showExp, bool showArt)
 		printStatBase(EStat::HEALTH, CGI->generaltexth->allTexts[388], parent->info->creature->valOfBonuses(Bonus::STACK_HEALTH), battleStack->valOfBonuses(Bonus::STACK_HEALTH));
 		printStatBase(EStat::SPEED, CGI->generaltexth->zelp[441].first, parent->info->creature->Speed(), battleStack->Speed());
 
-		if (shooter)
-			printStatBase(EStat::SHOTS, CGI->generaltexth->allTexts[198], battleStack->valOfBonuses(Bonus::SHOTS), battleStack->shots);
+		if(shooter)
+			printStatBase(EStat::SHOTS, CGI->generaltexth->allTexts[198], battleStack->shots.total(), battleStack->shots.available());
 		if (caster)
-			printStatBase(EStat::MANA, CGI->generaltexth->allTexts[399], battleStack->valOfBonuses(Bonus::CASTS), battleStack->casts);
+			printStatBase(EStat::MANA, CGI->generaltexth->allTexts[399], battleStack->casts.total(), battleStack->casts.available());
 		printStat(EStat::HEALTH_LEFT, CGI->generaltexth->allTexts[200], battleStack->firstHPleft);
 	}
 	else

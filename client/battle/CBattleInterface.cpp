@@ -1594,10 +1594,10 @@ void CBattleInterface::activateStack()
 	//set casting flag to true if creature can use it to not check it every time
 	const auto spellcaster = s->getBonusLocalFirst(Selector::type(Bonus::SPELLCASTER)),
 		randomSpellcaster = s->getBonusLocalFirst(Selector::type(Bonus::RANDOM_SPELLCASTER));
-	if (s->casts &&  (spellcaster || randomSpellcaster))
+	if(s->canCast() && (spellcaster || randomSpellcaster))
 	{
 		stackCanCastSpell = true;
-		if (randomSpellcaster)
+		if(randomSpellcaster)
 			creatureSpellToCast = -1; //spell will be set later on cast
 		else
 			creatureSpellToCast = curInt->cb->battleGetRandomStackSpell(CRandomGenerator::getDefault(), s, CBattleInfoCallback::RANDOM_AIMED); //faerie dragon can cast only one spell until their next move
@@ -1698,16 +1698,16 @@ void CBattleInterface::getPossibleActionsForStack(const CStack *stack, const boo
 	{
 		PossibleActions notPriority = INVALID;
 		//first action will be prioritized over later ones
-		if (stack->casts) //TODO: check for battlefield effects that prevent casting?
+		if(stack->canCast()) //TODO: check for battlefield effects that prevent casting?
 		{
-			if (stack->hasBonusOfType (Bonus::SPELLCASTER))
+			if(stack->hasBonusOfType (Bonus::SPELLCASTER))
 			{
-				if (creatureSpellToCast != -1)
+				if(creatureSpellToCast != -1)
 				{
 					const CSpell *spell = SpellID(creatureSpellToCast).toSpell();
 					PossibleActions act = getCasterAction(spell, stack, ECastingMode::CREATURE_ACTIVE_CASTING);
 
-					if (forceCast)
+					if(forceCast)
 					{
 						//forced action to be only one possible
 						possibleActions.push_back(act);
@@ -1723,10 +1723,10 @@ void CBattleInterface::getPossibleActionsForStack(const CStack *stack, const boo
 			if (stack->hasBonusOfType (Bonus::DAEMON_SUMMONING))
 				possibleActions.push_back (RISE_DEMONS);
 		}
-		if (stack->shots && stack->hasBonusOfType (Bonus::SHOOTER))
-			possibleActions.push_back (SHOOT);
-		if (stack->hasBonusOfType (Bonus::RETURN_AFTER_STRIKE))
-			possibleActions.push_back (ATTACK_AND_RETURN);
+		if(stack->canShoot())
+			possibleActions.push_back(SHOOT);
+		if(stack->hasBonusOfType(Bonus::RETURN_AFTER_STRIKE))
+			possibleActions.push_back(ATTACK_AND_RETURN);
 
 		possibleActions.push_back(ATTACK); //all active stacks can attack
 		possibleActions.push_back(WALK_AND_ATTACK); //not all stacks can always walk, but we will check this elsewhere
@@ -2306,7 +2306,7 @@ void CBattleInterface::handleHex(BattleHex myNumber, int eventType)
 				realizeAction = [=] {giveCommand(Battle::SHOOT, myNumber, activeStack->ID);};
 				std::string estDmgText = formatDmgRange(curInt->cb->battleEstimateDamage(CRandomGenerator::getDefault(), sactive, shere)); //calculating estimated dmg
 				//printing - Shoot %s (%d shots left, %s damage)
-				consoleMsg = (boost::format(CGI->generaltexth->allTexts[296]) % shere->getName() % sactive->shots % estDmgText).str();
+				consoleMsg = (boost::format(CGI->generaltexth->allTexts[296]) % shere->getName() % sactive->shots.available() % estDmgText).str();
 			}
 				break;
 			case AIMED_SPELL_CREATURE:

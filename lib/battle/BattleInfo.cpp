@@ -140,27 +140,10 @@ void BattleInfo::localInit()
 		armyObj->attachTo(this);
 	}
 
-	for(CStack *s : stacks)
-		localInitStack(s);
+	for(CStack * s : stacks)
+		s->localInit(this);
 
 	exportBonuses();
-}
-
-void BattleInfo::localInitStack(CStack * s)
-{
-	s->exportBonuses();
-	if(s->base) //stack originating from "real" stack in garrison -> attach to it
-	{
-		s->attachTo(const_cast<CStackInstance*>(s->base));
-	}
-	else //attach directly to obj to which stack belongs and creature type
-	{
-		CArmedInstance *army = battleGetArmyObject(s->side);
-		s->attachTo(army);
-		assert(s->type);
-		s->attachTo(const_cast<CCreature*>(s->type));
-	}
-	s->postInit();
 }
 
 namespace CGH

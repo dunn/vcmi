@@ -4045,12 +4045,12 @@ bool CGameHandler::makeBattleAction(BattleAction &ba)
 
 			int additionalAttacks = stack->getBonuses(Selector::type (Bonus::ADDITIONAL_ATTACK),
 				(Selector::effectRange(Bonus::NO_LIMIT).Or(Selector::effectRange(Bonus::ONLY_DISTANCE_FIGHT))))->totalValue();
-			for (int i = 0; i < additionalAttacks; ++i)
+			for(int i = 0; i < additionalAttacks; ++i)
 			{
 				if (
 					stack->alive()
 					&& destinationStack->alive()
-					&& stack->shots
+					&& stack->shots.canUse()
 					)
 				{
 					BattleAttack bat;
@@ -4588,7 +4588,7 @@ void CGameHandler::stackTurnTrigger(const CStack *st)
 		}
 		BonusList bl = *(st->getBonuses(Selector::type(Bonus::ENCHANTER)));
 		int side = gs->curB->whatSide(st->owner);
-		if (st->casts && !gs->curB->sides.at(side).enchanterCounter)
+		if(st->canCast() && !gs->curB->sides.at(side).enchanterCounter)
 		{
 			bool cast = false;
 			while (!bl.empty() && !cast)

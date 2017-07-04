@@ -529,12 +529,10 @@ bool CBattleInfoCallback::battleCanShoot(const CStack * stack, BattleHex dest) c
 	if(stack->getCreature()->idNumber == CreatureID::CATAPULT && dst) //catapult cannot attack creatures
 		return false;
 
-	if(stack->hasBonusOfType(Bonus::SHOOTER)//it's shooter
-	&& battleMatchOwner(stack, dst)
-	&& dst->alive()
-	&& (!battleIsStackBlocked(stack) || stack->hasBonusOfType(Bonus::FREE_SHOOTING))
-	&& stack->shots
-	)
+	if(stack->canShoot()
+		&& battleMatchOwner(stack, dst)
+		&& dst->alive()
+		&& (!battleIsStackBlocked(stack) || stack->hasBonusOfType(Bonus::FREE_SHOOTING)))
 		return true;
 	return false;
 }
@@ -1456,7 +1454,7 @@ SpellID CBattleInfoCallback::getRandomBeneficialSpell(CRandomGenerator & rand, c
 		{
 			auto walker = getAliveEnemy([&](const CStack * stack) //look for enemy, non-shooting stack
 			{
-				return !stack->shots;
+				return !stack->canShoot();
 			});
 
 			if (!walker)
@@ -1467,7 +1465,7 @@ SpellID CBattleInfoCallback::getRandomBeneficialSpell(CRandomGenerator & rand, c
 		{
 			auto shooter = getAliveEnemy([&](const CStack * stack) //look for enemy, non-shooting stack
 			{
-				return stack->hasBonusOfType(Bonus::SHOOTER) && stack->shots;
+				return stack->canShoot();
 			});
 			if (!shooter)
 				continue;
@@ -1495,13 +1493,13 @@ SpellID CBattleInfoCallback::getRandomBeneficialSpell(CRandomGenerator & rand, c
 			break;
 		case SpellID::BLOODLUST:
 		{
-			if (subject->shots) //if can shoot - only if enemy uits are adjacent
+			if(subject->canShoot()) //if can shoot - only if enemy units are adjacent
 				continue;
 		}
 			break;
 		case SpellID::PRECISION:
 		{
-			if (!(subject->hasBonusOfType(Bonus::SHOOTER) && subject->shots))
+			if(!subject->canShoot())
 				continue;
 		}
 			break;
