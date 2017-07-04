@@ -15,8 +15,8 @@
 #include "NetPacks.h"
 
 ///CAmmo
-CAmmo::CAmmo(const CStack * Owner):
-	owner(Owner)
+CAmmo::CAmmo(const CStack * Owner, CSelector totalSelector):
+	owner(Owner), totalProxy(Owner, totalSelector)
 {
 	reset();
 }
@@ -36,6 +36,11 @@ void CAmmo::reset()
 	used = 0;
 }
 
+int32_t CAmmo::total() const
+{
+	return totalProxy->totalValue();
+}
+
 void CAmmo::use(int32_t amount)
 {
 	if(available() - amount < 0)
@@ -49,15 +54,9 @@ void CAmmo::use(int32_t amount)
 
 ///CShots
 CShots::CShots(const CStack * Owner):
-	CAmmo(Owner)
+	CAmmo(Owner, Selector::type(Bonus::SHOTS))
 {
 
-}
-
-int32_t CShots::total() const
-{
-	static CSelector selector = Selector::type(Bonus::SHOTS);
-	return owner->valOfBonuses(selector);
 }
 
 void CShots::use(int32_t amount)
@@ -80,30 +79,22 @@ void CShots::use(int32_t amount)
 
 ///CCasts
 CCasts::CCasts(const CStack * Owner):
-	CAmmo(Owner)
+	CAmmo(Owner, Selector::type(Bonus::CASTS))
 {
 
-}
-
-int32_t CCasts::total() const
-{
-	static CSelector selector = Selector::type(Bonus::CASTS);
-	return owner->valOfBonuses(selector);
 }
 
 ///CRetaliations
 CRetaliations::CRetaliations(const CStack * Owner):
-	CAmmo(Owner), totalCache(0)
+	CAmmo(Owner, Selector::type(Bonus::ADDITIONAL_RETALIATION)), totalCache(0)
 {
 
 }
 
 int32_t CRetaliations::total() const
 {
-	static CSelector selector = Selector::type(Bonus::ADDITIONAL_RETALIATION);
-
 	//after dispell bonus should remain during current round
-	int32_t val = 1 + owner->valOfBonuses(selector);
+	int32_t val = 1 + totalProxy->totalValue();
 	vstd::amax(totalCache, val);
 	return totalCache;
 }
@@ -237,9 +228,19 @@ bool CStack::canCast() const
 	return casts.canUse(1);//do not check specific cast abilities here
 }
 
+bool CStack::isCaster() const
+{
+	return casts.total() > 0;//do not check specific cast abilities here
+}
+
 bool CStack::canShoot() const
 {
 	return shots.canUse(1) && hasBonusOfType(Bonus::SHOOTER);
+}
+
+bool CStack::isShooter() const
+{
+	return shots.total() > 0 && hasBonusOfType(Bonus::SHOOTER);
 }
 
 bool CStack::moved( int turn /*= 0*/ ) const

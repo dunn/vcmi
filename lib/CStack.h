@@ -19,12 +19,12 @@ class CStack;
 class DLL_LINKAGE CAmmo
 {
 public:
-	CAmmo(const CStack * Owner);
+	CAmmo(const CStack * Owner, CSelector totalSelector);
 
 	int32_t available() const;
 	bool canUse(int32_t amount = 1) const;
 	virtual void reset();
-	virtual int32_t total() const = 0;
+	virtual int32_t total() const;
 	virtual void use(int32_t amount = 1);
 
 	template <typename Handler> void serialize(Handler & h, const int version)
@@ -36,6 +36,7 @@ public:
 
 protected:
 	const CStack * owner;
+	CBonusProxy totalProxy;
 private:
 	int32_t used;
 };
@@ -44,7 +45,6 @@ class DLL_LINKAGE CShots : public CAmmo
 {
 public:
 	CShots(const CStack * Owner);
-	int32_t total() const override;
 	void use(int32_t amount = 1) override;
 };
 
@@ -52,7 +52,6 @@ class DLL_LINKAGE CCasts : public CAmmo
 {
 public:
 	CCasts(const CStack * Owner);
-	int32_t total() const override;
 };
 
 class DLL_LINKAGE CRetaliations : public CAmmo
@@ -104,8 +103,13 @@ public:
 	bool moved(int turn = 0) const; //if stack was already moved this turn
 	bool waited(int turn = 0) const;
 	bool canCast() const;
+	bool isCaster() const;
+
 	bool canMove(int turn = 0) const; //if stack can move
+
 	bool canShoot() const;
+	bool isShooter() const;
+
 	bool canBeHealed() const; //for first aid tent - only harmed stacks that are not war machines
 	///returns actual heal value based on internal state
 	ui32 calculateHealedHealthPoints(ui32 toHeal, const bool resurrect) const;
