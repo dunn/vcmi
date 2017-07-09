@@ -206,4 +206,7 @@ set_target_properties(vcmiclient PROPERTIES ${PCH_PROPERTIES})
 cotire(vcmiclient)
 
 
-install(TARGETS vcmiclient DESTINATION ${BIN_DIR})
+# everything is installed as an app bundle; see the root CMakeLists
+if (NOT APPLE)
+  install(TARGETS vcmiclient DESTINATION ${BIN_DIR})
+endif()

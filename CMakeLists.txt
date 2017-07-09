@@ -258,6 +258,8 @@ if (NOT APPLE)
 						GROUP_READ GROUP_EXECUTE
 						WORLD_READ WORLD_EXECUTE)
 	endif()
+else()
+  install(DIRECTORY bin/vcmiclient.app DESTINATION ${CMAKE_INSTALL_PREFIX})
 endif()
 
 if(WIN32)
